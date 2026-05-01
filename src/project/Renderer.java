@@ -47,11 +47,18 @@ public class Renderer extends AbstractRenderer {
         // grid resolution
         int N = 20;
 
-        float[] vertexBufferData = {
-                -0.5f, -0.5f,
-                0.5f, -0.5f,
-                0.0f,  0.5f
-        };
+        float[] vertexBufferData = new float[N * N * 2];
+        int index = 0;
+
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                float fx = -1f + 2f * x / (N - 1);
+                float fy = -1f + 2f * y / (N - 1);
+
+                vertexBufferData[index++] = fx;
+                vertexBufferData[index++] = fy;
+            }
+        }
 
         int[] indexBufferData = {
                 0, 1, 2
@@ -61,7 +68,7 @@ public class Renderer extends AbstractRenderer {
           new OGLBuffers.Attrib("inPosition", 2, 0)
         };
 
-        buffers = new OGLBuffers(vertexBufferData, 2, attributes, indexBufferData);
+        buffers = new OGLBuffers(vertexBufferData, 2, attributes, null);
 
         shaderProgram = ShaderUtils.loadProgram("/shader");
     }
