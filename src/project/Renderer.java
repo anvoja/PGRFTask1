@@ -20,10 +20,11 @@ public class Renderer extends AbstractRenderer {
     private Mat4 projection;
     private Mat4 view;
     private Mat4 model;
-    private int locProjection;
+    private int surfaceMode = 1;private int locProjection;
     private int locView;
     private int locModel;
     private int locTime;
+    private int locSurfaceMode;
 
     private GLFWKeyCallback   keyCallback = new GLFWKeyCallback() {
         @Override
@@ -47,6 +48,18 @@ public class Renderer extends AbstractRenderer {
                     case GLFW_KEY_V:
                         renderMode = GL_TRIANGLES;
                         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                        break;
+                    case GLFW_KEY_1:
+                        surfaceMode = 0; // plane
+                        break;
+                    case GLFW_KEY_2:
+                        surfaceMode = 1; // wave
+                        break;
+                    case GLFW_KEY_3:
+                        surfaceMode = 2; // hill
+                        break;
+                    case GLFW_KEY_4:
+                        surfaceMode = 3; // saddle
                         break;
                 }
             }
@@ -104,6 +117,7 @@ public class Renderer extends AbstractRenderer {
         locView = glGetUniformLocation(shaderProgram, "view");
         locModel = glGetUniformLocation(shaderProgram, "model");
         locTime = glGetUniformLocation(shaderProgram, "time");
+        locSurfaceMode = glGetUniformLocation(shaderProgram, "surfaceMode");
     }
 
     @Override
@@ -131,6 +145,7 @@ public class Renderer extends AbstractRenderer {
         glUniformMatrix4fv(locProjection, false, projection.floatArray());
         glUniformMatrix4fv(locView, false, view.floatArray());
         glUniform1f(locTime, time);
+        glUniform1i(locSurfaceMode, surfaceMode);
 
         buffers.draw(renderMode, shaderProgram);
     }
