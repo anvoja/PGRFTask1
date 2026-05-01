@@ -23,6 +23,7 @@ public class Renderer extends AbstractRenderer {
     private int locProjection;
     private int locView;
     private int locModel;
+    private int locTime;
 
     private GLFWKeyCallback   keyCallback = new GLFWKeyCallback() {
         @Override
@@ -39,10 +40,13 @@ public class Renderer extends AbstractRenderer {
                         renderMode = GL_TRIANGLES;
                         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                         break;
-
                     case GLFW_KEY_B:
                         renderMode = GL_TRIANGLES;
                         glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+                        break;
+                    case GLFW_KEY_V:
+                        renderMode = GL_TRIANGLES;
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                         break;
                 }
             }
@@ -99,9 +103,7 @@ public class Renderer extends AbstractRenderer {
         locProjection = glGetUniformLocation(shaderProgram, "projection");
         locView = glGetUniformLocation(shaderProgram, "view");
         locModel = glGetUniformLocation(shaderProgram, "model");
-        System.out.println("locProjection = " + locProjection);
-        System.out.println("locView = " + locView);
-        System.out.println("width = " + width + ", height = " + height);
+        locTime = glGetUniformLocation(shaderProgram, "time");
     }
 
     @Override
@@ -122,10 +124,13 @@ public class Renderer extends AbstractRenderer {
         );
         model = new Mat4Identity();
 
+        float time = (float) glfwGetTime();
+
         glUseProgram(shaderProgram);
         glUniformMatrix4fv(locModel, false, model.floatArray());
         glUniformMatrix4fv(locProjection, false, projection.floatArray());
         glUniformMatrix4fv(locView, false, view.floatArray());
+        glUniform1f(locTime, time);
 
         buffers.draw(renderMode, shaderProgram);
     }
