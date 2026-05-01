@@ -11,6 +11,8 @@ uniform float time;
 uniform int surfaceMode;
 
 out float height;
+out vec3 vNormal;
+out vec3 vFragPos;
 
 vec3 plane(vec2 p) {
     return vec3(p.x, p.y, 0.0);
@@ -48,10 +50,27 @@ vec3 getPosition(vec2 p) {
     return plane(p);
 }
 
+vec3 getNormal(vec2 p) {
+    float d = 0.001;
+
+    vec3 p1 = getPosition(p + vec2(d, 0.0));
+    vec3 p2 = getPosition(p - vec2(d, 0.0));
+    vec3 p3 = getPosition(p + vec2(0.0, d));
+    vec3 p4 = getPosition(p - vec2(0.0, d));
+
+    vec3 dx = p1 - p2;
+    vec3 dy = p3 - p4;
+
+    return normalize(cross(dx, dy));
+}
+
 void main() {
     vec3 pos = getPosition(inPosition);
 
     height = pos.z;
+
+    vNormal = mat3(transpose(inverse(model))) * getNormal(inPosition);
+    vFragPos = vec3(model * vec4(pos, 1.0));
 
     gl_Position = projection * view * model * vec4(pos, 1.0);
 }

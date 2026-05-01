@@ -6,6 +6,8 @@ import lwjglutils.OGLUtils;
 import lwjglutils.ShaderUtils;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.GLFWMouseButtonCallback;
+import org.lwjgl.glfw.GLFWScrollCallback;
 import transforms.*;
 
 import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
@@ -15,16 +17,31 @@ import static org.lwjgl.opengl.GL20.*;
 
 public class Renderer extends AbstractRenderer {
     private OGLBuffers buffers;
+
     private int renderMode = GL_POINTS;
+
     private int shaderProgram;
+
     private Mat4 projection;
     private Mat4 view;
     private Mat4 model;
+
     private int surfaceMode = 1;private int locProjection;
+
     private int locView;
     private int locModel;
     private int locTime;
     private int locSurfaceMode;
+    private int locLightPosition;
+
+    private boolean mousePressed = false;
+
+    private double lastMouseX;
+    private double lastMouseY;
+
+    private double azimuth = 0.0;
+    private double zenith = 0.7;
+    private double cameraDistance = 6.0;
 
     private GLFWKeyCallback   keyCallback = new GLFWKeyCallback() {
         @Override
@@ -118,6 +135,7 @@ public class Renderer extends AbstractRenderer {
         locModel = glGetUniformLocation(shaderProgram, "model");
         locTime = glGetUniformLocation(shaderProgram, "time");
         locSurfaceMode = glGetUniformLocation(shaderProgram, "surfaceMode");
+        locLightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
     }
 
     @Override
@@ -131,8 +149,12 @@ public class Renderer extends AbstractRenderer {
                 0.1,
                 100.0
         );
+        double camX = cameraDistance * Math.sin(zenith) * Math.sin(azimuth);
+        double camY = cameraDistance * Math.sin(zenith) * Math.cos(azimuth);
+        double camZ = cameraDistance * Math.cos(zenith);
+
         view = new Mat4ViewRH(
-                new Vec3D(1.5, 0, -2),
+                new Vec3D(camX, camY, camZ),
                 new Vec3D(0, 0, 0),
                 new Vec3D(0, 0, 1)
         );
@@ -146,8 +168,63 @@ public class Renderer extends AbstractRenderer {
         glUniformMatrix4fv(locView, false, view.floatArray());
         glUniform1f(locTime, time);
         glUniform1i(locSurfaceMode, surfaceMode);
+        glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
 
         buffers.draw(renderMode, shaderProgram);
+    }
+
+    private GLFWMouseButtonCallback mouseCallback = new GLFWMouseButtonCallback() {
+        @Override
+        public void invoke(long window, int button, int action, int mods) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                mousePressed = action == GLFW_PRESS;
+
+                double[] x = new double[1];
+                double[] y = new double[1];
+                glfwGetCursorPos(window, x, y);
+
+                lastMouseX = x[0];
+                lastMouseY = y[0];
+            }
+        }
+    };
+
+    private GLFWCursorPosCallback cursorPosCallback = new GLFWCursorPosCallback() {
+        @Override
+        public void invoke(long window, double x, double y) {
+            if (!mousePressed) return;
+
+            double dx = x - lastMouseX;
+            double dy = y - lastMouseY;
+
+            lastMouseX = x;
+            lastMouseY = y;
+
+            azimuth -= dx * 0.01;
+            zenith += dy * 0.01;
+
+            // prevent camera flipping upside down
+            zenith = Math.max(0.1, Math.min(Math.PI - 0.1, zenith));
+        }
+    };
+
+    private GLFWScrollCallback scrollCallback = new GLFWScrollCallback() {
+        @Override
+        public void invoke(long window, double dx, double dy) {
+            cameraDistance -= dy * 0.5;
+
+            cameraDistance = Math.max(2.0, Math.min(20.0, cameraDistance));
+        }
+    };
+
+    @Override
+    public GLFWMouseButtonCallback getMouseCallback() {
+        return mouseCallback;
+    }
+
+    @Override
+    public GLFWCursorPosCallback getCursorPosCallback() {
+        return cursorPosCallback;
     }
 
     @Override
@@ -155,10 +232,8 @@ public class Renderer extends AbstractRenderer {
         return keyCallback;
     }
 
-    protected GLFWCursorPosCallback cursorPosCallback = new GLFWCursorPosCallback() {
-        @Override
-        public void invoke(long window, double x, double y) {
-            // System.out.println("Cursor position [" + x + ", " + y + "]");
-        }
-    };
+    @Override
+    public GLFWScrollCallback getScrollCallback() {
+        return scrollCallback;
+    }
 }
