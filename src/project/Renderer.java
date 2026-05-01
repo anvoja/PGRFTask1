@@ -33,6 +33,7 @@ public class Renderer extends AbstractRenderer {
     private int locTime;
     private int locSurfaceMode;
     private int locLightPosition;
+    private int locEyePosition;
 
     private boolean mousePressed = false;
 
@@ -91,7 +92,7 @@ public class Renderer extends AbstractRenderer {
         OGLUtils.shaderCheck();
         glPointSize(5f);
         // grid resolution
-        int N = 20;
+        int N = 30;
 
         float[] vertexBufferData = new float[N * N * 2];
         int index = 0;
@@ -136,6 +137,7 @@ public class Renderer extends AbstractRenderer {
         locTime = glGetUniformLocation(shaderProgram, "time");
         locSurfaceMode = glGetUniformLocation(shaderProgram, "surfaceMode");
         locLightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
+        locEyePosition = glGetUniformLocation(shaderProgram, "eyePosition");
     }
 
     @Override
@@ -169,6 +171,7 @@ public class Renderer extends AbstractRenderer {
         glUniform1f(locTime, time);
         glUniform1i(locSurfaceMode, surfaceMode);
         glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
+        glUniform3f(locEyePosition, (float) camX, (float) camY, (float) camZ);
 
         buffers.draw(renderMode, shaderProgram);
     }
