@@ -35,6 +35,8 @@ public class Renderer extends AbstractRenderer {
 
     private int surfaceMode = 1;
 
+    private int colorMode = 0;
+
     private int locProjection;
     private int locView;
     private int locModel;
@@ -43,9 +45,11 @@ public class Renderer extends AbstractRenderer {
     private int locLightPosition;
     private int locEyePosition;
     private int locObjMat;
+    private int locColorMode;
 
     private double objectRotation = 0.0;
-    private double objectOffsetX = 0.0;
+
+    private boolean perspectiveProjection = true;
 
     private boolean mousePressed = false;
 
@@ -54,7 +58,6 @@ public class Renderer extends AbstractRenderer {
 
     private double azimuth = Math.PI / 2 + Math.PI;
     private double zenith = 0.2;
-
     private Vec3D cameraPos = new Vec3D(0.1, 0, -0.5);
     private Vec3D lookForward;
     private Vec3D moveForward;
@@ -115,16 +118,10 @@ public class Renderer extends AbstractRenderer {
                         renderMode = GL_TRIANGLE_STRIP;
                         break;
                     case GLFW_KEY_LEFT:
-                        objectOffsetX -= 0.2;
+                        objectRotation -= 0.2;
                         break;
                     case GLFW_KEY_RIGHT:
-                        objectOffsetX += 0.2;
-                        break;
-                    case GLFW_KEY_Q:
-                        objectRotation -= 0.1;
-                        break;
-                    case GLFW_KEY_E:
-                        objectRotation += 0.1;
+                        objectRotation += 0.2;
                         break;
                     case GLFW_KEY_W:
                         cameraPos = cameraPos.add(moveForward.mul(speed));
@@ -147,6 +144,17 @@ public class Renderer extends AbstractRenderer {
                         break;
                     case GLFW_KEY_LEFT_SHIFT:
                         cameraPos = cameraPos.sub(new Vec3D(0, 0, speed));
+                        break;
+                    case GLFW_KEY_I:
+                        // distant objects looks smaller
+                        perspectiveProjection = true;
+                        break;
+                    case GLFW_KEY_U:
+                        // size does not change with distance
+                        perspectiveProjection = false;
+                        break;
+                    case GLFW_KEY_C:
+                        colorMode = (colorMode + 1) % 8;
                         break;
                 }
             }
@@ -231,6 +239,10 @@ public class Renderer extends AbstractRenderer {
         locLightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
         locEyePosition = glGetUniformLocation(shaderProgram, "eyePosition");
         locObjMat = glGetUniformLocation(objectShaderProgram, "mat");
+        locColorMode = glGetUniformLocation(objectShaderProgram, "colorMode");
+
+        textRenderer = new OGLTextRenderer(width, height);
+        textRenderer.resize(width, height);
     }
 
     @Override
@@ -254,12 +266,23 @@ public class Renderer extends AbstractRenderer {
         right = moveForward.cross(new Vec3D(0, 0, 1)).normalized().get();
 
         if (height == 0) return;
-        projection = new Mat4PerspRH(
-                60,
-                (double) width / height,
-                0.1,
-                100.0
-        );
+        double aspect = (double) width / height;
+
+        if (perspectiveProjection) {
+            projection = new Mat4PerspRH(
+                    60,
+                    aspect,
+                    0.1,
+                    100.0
+            );
+        } else {
+            projection = new Mat4OrthoRH(
+                    6 * aspect,
+                    6,
+                    0.1,
+                    100.0
+            );
+        }
 
         view = new Mat4ViewRH(
                 cameraPos,
@@ -267,8 +290,8 @@ public class Renderer extends AbstractRenderer {
                 new Vec3D(0, 0, 1)
         );
 
-        model = new Mat4Transl(-1.5 + objectOffsetX, 0, 0)
-                .mul(new Mat4RotZ(objectRotation))
+        model = new Mat4Transl(-1.5, 0, 0)
+                .mul(new Mat4RotX(objectRotation))
                 .mul(new Mat4Scale(0.7));
 
         float time = (float) glfwGetTime();
@@ -282,6 +305,7 @@ public class Renderer extends AbstractRenderer {
             glUniform3f(locEyePosition, (float) cameraPos.getX(), (float) cameraPos.getY(), (float) cameraPos.getZ());
             glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
             glUniformMatrix4fv(locModel, false, model.floatArray());
+            glUniform1i(locColorMode, colorMode);
 
             if (surfaceMode == 1) {
                 model = new Mat4Transl(-2, -1.5, 0);
@@ -326,6 +350,10 @@ public class Renderer extends AbstractRenderer {
 
             objectBuffers.draw(objectModel.getTopology(), objectShaderProgram);
         }
+
+        textRenderer.clear();
+        textRenderer.addStr2D(20, 20, getColorModeText());
+        textRenderer.draw();
     }
 
     private GLFWMouseButtonCallback mouseCallback = new GLFWMouseButtonCallback() {
@@ -362,6 +390,20 @@ public class Renderer extends AbstractRenderer {
             zenith = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, zenith));
         }
     };
+
+    private String getColorModeText() {
+        switch (colorMode) {
+            case 0: return "Color mode: XYZ in observer coordinates";
+            case 1: return "Color mode: Depth buffer";
+            case 2: return "Color mode: Normal XYZ";
+            case 3: return "Color mode: Texture RGBA";
+            case 4: return "Color mode: Texture UV";
+            case 5: return "Color mode: Lighting without texture";
+            case 6: return "Color mode: Complete lighting with texture";
+            case 7: return "Color mode: Distance from light";
+            default: return "Color mode: Unknown";
+        }
+    }
 
     @Override
     public GLFWMouseButtonCallback getMouseCallback() {

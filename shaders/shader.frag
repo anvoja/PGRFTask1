@@ -3,19 +3,15 @@
 in float height;
 in vec3 vNormal;
 in vec3 vFragPos;
+in vec3 viewPosition;
 
 uniform vec3 lightPosition;
 uniform vec3 eyePosition;
+uniform int colorMode;
 
 out vec4 outColor;
 
 void main() {
-    float t = clamp(height + 0.5, 0.0, 1.0);
-
-    vec3 lowColor = vec3(0.0, 1.0, 0.2);
-    vec3 highColor = vec3(1.0, 0.0, 0.2);
-    vec3 baseColor = mix(highColor, lowColor, t);
-
     vec3 normal = normalize(vNormal);
     vec3 lightDir = normalize(lightPosition - vFragPos);
     vec3 viewDir = normalize(eyePosition - vFragPos);
@@ -25,9 +21,40 @@ void main() {
     vec3 reflectDir = reflect(lightDir, -normal);
     float specular = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
 
-    vec3 ambient = baseColor * 0.25;
-    vec3 diffuseColor = baseColor * diffuse;
-    vec3 specularColor = vec3(1.0) * specular * 0.4;
+    vec3 color;
 
-    outColor = vec4(ambient + diffuseColor + specularColor, 1.0);
+    switch(colorMode) {
+
+        case 0:
+        // 1) xyz in view space
+        color = abs(normalize(viewPosition));
+        break;
+
+        case 1:
+        // 2) depth
+        float depth = gl_FragCoord.z;
+        color = vec3(depth);
+        break;
+
+        case 2:
+        // 3) normals
+        color = normal * 0.5 + 0.5;
+        break;
+
+        case 3:
+        // 6) lighting without texture
+        color = vec3(0.6) * diffuse + vec3(0.2);
+        break;
+
+        case 4:
+        // 8) distance from light
+        float dist = length(lightPosition - vFragPos);
+        color = vec3(1.0 - dist * 0.2);
+        break;
+
+        default:
+        color = vec3(1.0, 0.0, 1.0); // debug pink
+    }
+
+    outColor = vec4(color, 1.0);
 }

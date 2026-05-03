@@ -13,6 +13,7 @@ uniform int surfaceMode;
 out float height;
 out vec3 vNormal;
 out vec3 vFragPos;
+out vec3 viewPosition;
 
 vec3 pos;
 
@@ -116,5 +117,10 @@ void main() {
     vNormal = mat3(transpose(inverse(model))) * getNormal(inPosition);
     vFragPos = vec3(model * vec4(pos, 1.0));
 
-    gl_Position = projection * view * model * vec4(pos, 1.0);
+    vec4 worldPosition = model * vec4(pos, 1.0);
+    vec4 cameraPosition = view * worldPosition;
+
+    viewPosition = cameraPosition.xyz;
+
+    gl_Position = projection * cameraPosition;
 }
