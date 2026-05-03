@@ -12,6 +12,7 @@ uniform int surfaceMode;
 
 out float height;
 out vec3 vNormal;
+out vec3 oNormal;
 out vec3 vFragPos;
 out vec3 viewPosition;
 
@@ -114,6 +115,7 @@ void main() {
 
     height = pos.z;
 
+    oNormal = mat3(transpose(inverse(view * model))) * getNormal(inPosition);
     vNormal = mat3(transpose(inverse(model))) * getNormal(inPosition);
     vFragPos = vec3(model * vec4(pos, 1.0));
 

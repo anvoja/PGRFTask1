@@ -238,8 +238,8 @@ public class Renderer extends AbstractRenderer {
         locSurfaceMode = glGetUniformLocation(shaderProgram, "surfaceMode");
         locLightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
         locEyePosition = glGetUniformLocation(shaderProgram, "eyePosition");
+        locColorMode = glGetUniformLocation(shaderProgram, "colorMode");
         locObjMat = glGetUniformLocation(objectShaderProgram, "mat");
-        locColorMode = glGetUniformLocation(objectShaderProgram, "colorMode");
 
         textRenderer = new OGLTextRenderer(width, height);
         textRenderer.resize(width, height);
