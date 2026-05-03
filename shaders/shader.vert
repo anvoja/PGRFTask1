@@ -15,6 +15,7 @@ out vec3 vNormal;
 out vec3 oNormal;
 out vec3 vFragPos;
 out vec3 viewPosition;
+out vec2 texCoord;
 
 vec3 pos;
 
@@ -123,6 +124,8 @@ void main() {
     vec4 cameraPosition = view * worldPosition;
 
     viewPosition = cameraPosition.xyz;
+
+    texCoord = inPosition.xy * 0.5 + 0.5;
 
     gl_Position = projection * cameraPosition;
 }

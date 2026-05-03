@@ -5,10 +5,12 @@ in vec3 oNormal;
 in vec3 vNormal;
 in vec3 vFragPos;
 in vec3 viewPosition;
+in vec2 texCoord;
 
 uniform vec3 lightPosition;
 uniform vec3 eyePosition;
 uniform int colorMode;
+uniform sampler2D textureSampler;
 
 out vec4 outColor;
 
@@ -48,14 +50,12 @@ void main() {
             color = n * 0.5 + 0.5;
             break;
         case 3:
-            // 6) lighting without texture
-            color = vec3(0.6) * diffuse + vec3(0.2);
+            // 6) map texture with coordinates
+            vec4 texColor = texture(textureSampler, texCoord);
+            color = texColor.rgb;
             break;
         case 4:
-            // 8) distance from light
-            float dist = length(lightPosition - vFragPos);
-            color = vec3(1.0 - dist * 0.2);
-            break;
+
         default:
             color = vec3(1.0, 0.0, 1.0); // debug pink
     }

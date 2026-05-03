@@ -8,6 +8,7 @@ import org.lwjgl.glfw.GLFWMouseButtonCallback;
 import org.lwjgl.glfw.GLFWScrollCallback;
 import transforms.*;
 
+import java.io.IOException;
 import java.util.ArrayList;
 
 import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
@@ -20,6 +21,8 @@ public class Renderer extends AbstractRenderer {
     private OGLBuffers stripBuffers;
     private OGLBuffers objectBuffers;
     private OGLModelOBJ objectModel;
+
+    private OGLTexture2D texture;
 
     private int renderMode = GL_TRIANGLES;
     // 0 = procedural surface
@@ -222,6 +225,12 @@ public class Renderer extends AbstractRenderer {
           new OGLBuffers.Attrib("inPosition", 3, 0)
         };
 
+        try {
+            texture = new OGLTexture2D("textures/mosaic.jpg");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
         objectModel = new OGLModelOBJ("/obj/vase.obj");
         objectBuffers = objectModel.getBuffers();
 
@@ -306,6 +315,7 @@ public class Renderer extends AbstractRenderer {
             glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
             glUniformMatrix4fv(locModel, false, model.floatArray());
             glUniform1i(locColorMode, colorMode);
+            texture.bind(shaderProgram, "textureSampler", 0);
 
             if (surfaceMode == 1) {
                 model = new Mat4Transl(-2, -1.5, 0);
