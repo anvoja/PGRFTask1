@@ -14,10 +14,14 @@ out float height;
 out vec3 vNormal;
 out vec3 vFragPos;
 
+vec3 pos;
+
+// Cartesian plane
 vec3 plane(vec2 p) {
     return vec3(p.x, p.y, 0.0);
 }
 
+// Cartesian wave
 vec3 wave(vec2 p) {
     float x = p.x;
     float y = p.y;
@@ -25,26 +29,66 @@ vec3 wave(vec2 p) {
     return vec3(x, y, z);
 }
 
-vec3 hill(vec2 p) {
-    float x = p.x;
-    float y = p.y;
-    float z = 0.5 * exp(-(x * x + y * y) * 3.0);
+// Spherical sphere
+vec3 sphere(vec2 p) {
+    float u = (p.x + 1.0) * PI;
+    float v = (p.y + 1.0) * PI * 0.5;
+
+    float r = 1.0;
+
+    float x = r * sin(v) * cos(u);
+    float y = r * sin(v) * sin(u);
+    float z = r * cos(v);
+
     return vec3(x, y, z);
 }
 
-vec3 saddle(vec2 p) {
-    float x = p.x;
-    float y = p.y;
-    float z = 0.4 * (x * x - y * y);
+// Spherical flower
+vec3 flower(vec2 p) {
+    float u = (p.x + 1.0) * PI;
+    float v = (p.y + 1.0) * PI * 0.5;
+
+    float r = 1.0 + 0.25 * sin(6.0 * u + time) * cos(4.0 * v);
+
+    float x = r * sin(v) * cos(u);
+    float y = r * sin(v) * sin(u);
+    float z = r * cos(v);
+
+    return vec3(x, y, z);
+}
+
+vec3 cylinder(vec2 p) {
+    float u = (p.x + 1.0) * PI;
+    float z = p.y * 1.5;
+
+    float r = 1.0;
+
+    float x = r * cos(u);
+    float y = r * sin(u);
+
+    return vec3(x, y, z);
+}
+
+vec3 twistedCylinder(vec2 p) {
+    float u = (p.x + 1.0) * PI;
+    float z = p.y * 1.5;
+
+    float r = 0.8 + 0.2 * sin(6.0 * u + time + z * 3.0);
+
+    float x = r * cos(u);
+    float y = r * sin(u);
+
     return vec3(x, y, z);
 }
 
 vec3 getPosition(vec2 p) {
     switch(surfaceMode) {
-        case 0: return plane(p);
-        case 1: return wave(p);
-        case 2: return hill(p);
-        case 3: return saddle(p);
+        case 0: return plane(p);          // Cartesian
+        case 1: return wave(p);           // Cartesian
+        case 2: return sphere(p);         // Spherical
+        case 3: return flower(p);         // Spherical
+        case 4: return cylinder(p);       // Cylindrical
+        case 5: return twistedCylinder(p);// Cylindrical
     }
 
     return plane(p);
@@ -65,7 +109,7 @@ vec3 getNormal(vec2 p) {
 }
 
 void main() {
-    vec3 pos = getPosition(inPosition);
+    pos = getPosition(inPosition);
 
     height = pos.z;
 
