@@ -2,14 +2,19 @@
 
 #define PI 3.1415926538
 
+// Input vertex position from the Java vertex buffer.
 in vec2 inPosition;
 
+// Transformation matrices
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+// Time used for animated procedural surfaces.
 uniform float time;
+// Selects which procedural surface should be generated.
 uniform int surfaceMode;
 
+// Height of the generated surface for coloring
 out float height;
 out vec3 vNormal;
 out vec3 oNormal;
@@ -60,6 +65,7 @@ vec3 flower(vec2 p) {
     return vec3(x, y, z);
 }
 
+// Basic cylinder.
 vec3 cylinder(vec2 p) {
     float u = (p.x + 1.0) * PI;
     float z = p.y * 1.5;
@@ -72,6 +78,7 @@ vec3 cylinder(vec2 p) {
     return vec3(x, y, z);
 }
 
+// Twisted / deformed cylinder.
 vec3 twistedCylinder(vec2 p) {
     float u = (p.x + 1.0) * PI;
     float z = p.y * 1.5;
@@ -84,6 +91,7 @@ vec3 twistedCylinder(vec2 p) {
     return vec3(x, y, z);
 }
 
+// Chooses which procedural surface function should be used.
 vec3 getPosition(vec2 p) {
     switch(surfaceMode) {
         case 0: return plane(p);          // Cartesian
@@ -97,6 +105,9 @@ vec3 getPosition(vec2 p) {
     return plane(p);
 }
 
+// Calculates the normal of the generated surface.
+// The normal is approximated by finite differences in parameter space.
+// Small offset d is used to sample nearby positions.
 vec3 getNormal(vec2 p) {
     float d = 0.001;
 
@@ -125,6 +136,7 @@ void main() {
 
     viewPosition = cameraPosition.xyz;
 
+    // Convert input coordinates from [-1, 1] to [0, 1] for texture mapping.
     texCoord = inPosition.xy * 0.5 + 0.5;
 
     gl_Position = projection * cameraPosition;

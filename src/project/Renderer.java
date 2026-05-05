@@ -18,41 +18,68 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 public class Renderer extends AbstractRenderer {
+    // Main geometry buffers for procedural surfaces.
+    // triangle indices
     private OGLBuffers buffers;
+    //triangle strip indices.
     private OGLBuffers stripBuffers;
+
+    // Buffer and model for the predefined object
     private OGLBuffers objectBuffers;
     private OGLModelOBJ objectModel;
-    private OGLBuffers reflectorBuffer;
-    private OGLRenderTarget renderTarget;
-    private OGLTextRenderer textRenderer;
-    private OGLTexture2D.Viewer textureViewer;
 
+    // Buffer for the visible light source marker
+    private OGLBuffers reflectorBuffer;
+
+    // Render target used for rendering the scene into a texture.
+    // This is used in the ambient occlusion
+    private OGLRenderTarget renderTarget;
+
+    // Text renderer for displaying current mode information.
+    private OGLTextRenderer textRenderer;
+
+    // texture
+    private OGLTexture2D.Viewer textureViewer;
     private OGLTexture2D texture;
 
+    // GL_TRIANGLES = regular triangle mesh
+    // GL_TRIANGLE_STRIP = triangle strip mesh
     private int renderMode = GL_TRIANGLES;
-    // 0 = procedural surface
+
+    // 0 = procedural surface - colorMode pick
     // 1 = object
-    // 2 = light
+    // 2 = light - light sources on wave
     // 3 = ambient occlusion
     private int sceneMode = 0;
 
-    private int shaderProgram;
-    private int objectShaderProgram;
-    private int lightShaderProgram;
+    private int shaderProgram;          // procedural surface
+    private int objectShaderProgram;    // predefined object
+    private int lightShaderProgram;     // light sources
+    private int aoShaderProgram;        // ambient occlusion
 
-    private int aoShaderProgram;
-
+    // transformation matrices
     private Mat4 projection;
     private Mat4 view;
     private Mat4 model;
 
+    // procedural surface.
+    // 0 = plane
+    // 1 = wave
+    // 2 = sphere
+    // 3 = flower
+    // 4 = cylinder
     private int surfaceMode = 1;
 
+    // mode for frag of procedural surface shader
     private int colorMode = 0;
+    // mode for frag of light shader
     private int lightMode = 0;
+    // mode for picking object view
     private int polygonMode = GL_FILL;
+    // mode for Ambient oclustion
     private int aoMode = 0;
 
+    // Uniform locations for the procedural surface shader.
     private int locProjection;
     private int locView;
     private int locModel;
@@ -60,8 +87,12 @@ public class Renderer extends AbstractRenderer {
     private int locSurfaceMode;
     private int locLightPosition;
     private int locEyePosition;
-    private int locObjMat;
     private int locColorMode;
+
+    // Uniform location for the predefined object shader.
+    private int locObjMat;
+
+    // Uniform locations for the lighting shader.
     private int locLightMode;
     private int locLightProjection;
     private int locLightModel;
@@ -74,6 +105,7 @@ public class Renderer extends AbstractRenderer {
     private int locLightReflectorInnerCutOff;
     private int locLightReflectorOuterCutOff;
 
+    // Uniform locations for the ambient occlusion shader.
     private int locAoProjection;
     private int locAoView;
     private int locAoModel;
@@ -81,26 +113,39 @@ public class Renderer extends AbstractRenderer {
 
     private double objectRotation = 0.0;
 
+    // Projection type.
+    // true = perspective projection
+    // false = orthographic projection
     private boolean perspectiveProjection = true;
 
     private boolean mousePressed = false;
-
     private double lastMouseX;
     private double lastMouseY;
 
+    // Camera orientation and position.
+    // azimuth = horizontal camera angle
+    // zenith = vertical camera angle
     private double azimuth = Math.PI / 2 + Math.PI;
     private double zenith = 0.2;
     private Vec3D cameraPos = new Vec3D(0.2, 0.0, -0.5);
+
+    // Camera direction vectors calculated every frame.
     private Vec3D lookForward;
     private Vec3D moveForward;
     private Vec3D right;
+
+    // changes speed
     private double speed = 0.1;
 
+    // position of the light source
     private Vec3D pointLightSourcePosition = new Vec3D(-1.5, -1.5, -2.0);
+
     // reflector direction angles
+    // reflectorAzimuth controls left/right rotation.
+    // reflectorZenith controls up/down rotation.
     private double reflectorAzimuth = Math.toRadians(90.0);
     private double reflectorZenith = Math.toRadians(-35.0);
-
+    // Reflector cone angles.
     private double reflectorInnerAngle = 8.0;
     private double reflectorOuterAngle = 18.0;
 
@@ -114,6 +159,7 @@ public class Renderer extends AbstractRenderer {
                 glfwSetWindowShouldClose(window, true); // We will detect this in the rendering loop
             if (action == GLFW_PRESS || action == GLFW_REPEAT){
                 switch (key) {
+                    // polygon display mode selection
                     case GLFW_KEY_N:
                         // show object in lines
                         polygonMode = GL_LINE;
@@ -126,6 +172,8 @@ public class Renderer extends AbstractRenderer {
                         // show object as solid
                         polygonMode = GL_FILL;
                         break;
+
+                    // procedural surface selection
                     case GLFW_KEY_1:
                         surfaceMode = 0; // Cartesian plane
                         break;
@@ -141,32 +189,40 @@ public class Renderer extends AbstractRenderer {
                     case GLFW_KEY_5:
                         surfaceMode = 4; // Cylindrical cylinder
                         break;
+
+                    // switch between scenes
                     case GLFW_KEY_P:
                         // object mode
                         sceneMode = (sceneMode + 1) % 4;
                         switch (sceneMode) {
                             case 0:
+                                // procedural surfaces
                                 cameraPos = new Vec3D(0.2, 0.0, -0.5);
                                 azimuth = Math.PI / 2 + Math.PI;
                                 zenith = 0.2;
                                 break;
                             case 1:
+                                // predefined object
                                 cameraPos = new Vec3D(0.2, -0.8, -0.5);
                                 azimuth = 6;
                                 zenith = 0.5;
                                 break;
                             case 2:
+                                // light demonstration
                                 cameraPos = new Vec3D(0.5, -0, -0.7);
                                 azimuth = Math.PI / 2 + Math.PI;
                                 zenith = 0.5;
                                 break;
                             case 3:
+                                // ambient occlusion
                                 cameraPos = new Vec3D(0.0, -0.2, -0.8);
                                 azimuth = 2;
                                 zenith = 1.5;
                                 break;
                         }
                         break;
+
+                    // triangle or triangle strip rendering
                     case GLFW_KEY_L:
                         // object as regular triangles
                         renderMode = GL_TRIANGLES;
@@ -175,12 +231,16 @@ public class Renderer extends AbstractRenderer {
                         // object as strip of triangles
                         renderMode = GL_TRIANGLE_STRIP;
                         break;
+
+                    // object rotation
                     case GLFW_KEY_LEFT:
                         objectRotation -= 0.2;
                         break;
                     case GLFW_KEY_RIGHT:
                         objectRotation += 0.2;
                         break;
+
+                    // camera movement
                     case GLFW_KEY_W:
                         cameraPos = cameraPos.add(moveForward.mul(speed));
                         System.out.println(cameraPos);
@@ -203,6 +263,8 @@ public class Renderer extends AbstractRenderer {
                     case GLFW_KEY_LEFT_SHIFT:
                         cameraPos = cameraPos.sub(new Vec3D(0, 0, speed));
                         break;
+
+                    // projection perspective or orthographic
                     case GLFW_KEY_I:
                         // distant objects looks smaller
                         perspectiveProjection = true;
@@ -211,12 +273,18 @@ public class Renderer extends AbstractRenderer {
                         // size does not change with distance
                         perspectiveProjection = false;
                         break;
+
+                    // color mode selection for procedural surfaces
                     case GLFW_KEY_C:
                         colorMode = (colorMode + 1) % 6;
                         break;
+
+                    // light mode selection for light demonstration
                     case GLFW_KEY_H:
                         lightMode = (lightMode + 1) % 6;
                         break;
+
+                    // light position movement for light demonstration
                     case GLFW_KEY_KP_4:
                         // X left
                         pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(-speed, 0, 0));
@@ -241,6 +309,8 @@ public class Renderer extends AbstractRenderer {
                         // Y backward
                         pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(0, 0, -speed));
                         break;
+
+                    // rotate reflector direction
                     case GLFW_KEY_KP_7:
                         // rotate reflector left
                         reflectorAzimuth -= 0.05;
@@ -259,6 +329,8 @@ public class Renderer extends AbstractRenderer {
                         reflectorZenith += 0.05;
                         reflectorZenith = Math.max(-Math.PI / 2 + 0.01, reflectorZenith);
                         break;
+
+                    // modify reflector cone angle
                     case GLFW_KEY_Y:
                         // narrower reflector cone
                         reflectorInnerAngle = Math.max(2.0, reflectorInnerAngle - 1.0);
@@ -269,9 +341,13 @@ public class Renderer extends AbstractRenderer {
                         reflectorInnerAngle = Math.min(40.0, reflectorInnerAngle + 1.0);
                         reflectorOuterAngle = Math.min(60.0, reflectorOuterAngle + 1.0);
                         break;
+
+                    // aim reflector to the center of the surface
                     case GLFW_KEY_T:
                         aimReflectorAt(new Vec3D(-1.5, 0.0, 0.0));
                         break;
+
+                    // ambient occlusion mode selection
                     case GLFW_KEY_O:
                         aoMode = (aoMode + 1) % 3;
                         break;
@@ -282,12 +358,20 @@ public class Renderer extends AbstractRenderer {
 
     @Override
     public void init() {
+        // print info
         OGLUtils.printOGLparameters();
         OGLUtils.printLWJLparameters();
         OGLUtils.printJAVAparameters();
         OGLUtils.shaderCheck();
+
+        // modify point size for better visibility in points mode
         glPointSize(5f);
 
+        // ------------------------------------------------------------
+        // Create procedural grid vertices.
+        // The grid is created in the interval [-1, 1] x [-1, 1].
+        // The z-coordinate is initially 0; the shader later modifies it.
+        // ------------------------------------------------------------
         float[] vertexBufferData = new float[N * N * 3];
         int index = 0;
 
@@ -302,6 +386,9 @@ public class Renderer extends AbstractRenderer {
             }
         }
 
+        // ------------------------------------------------------------
+        // Create triangle index buffer.
+        // ------------------------------------------------------------
         int[] indexBufferData = new int[(N - 1) * (N - 1) * 6];
         ArrayList<Integer> stripList = new ArrayList<>();
 
@@ -320,6 +407,10 @@ public class Renderer extends AbstractRenderer {
             }
         }
 
+        // ------------------------------------------------------------
+        // Create triangle-strip index buffer.
+        // Degenerate vertices are inserted between rows.
+        // ------------------------------------------------------------
         int[] stripIndices = stripList.stream().mapToInt(i -> i).toArray();
         index = 0;
 
@@ -337,10 +428,17 @@ public class Renderer extends AbstractRenderer {
             }
         }
 
+        // Vertex attribute layout.
+        // The shader expects input variable named "inPosition".
         OGLBuffers.Attrib[] attributes = {
           new OGLBuffers.Attrib("inPosition", 3, 0)
         };
 
+        // ------------------------------------------------------------
+        // Create simple reflector geometry.
+        // The tip points in local +X direction.
+        // Later, the model matrix rotates it toward reflectorDirection.
+        // ------------------------------------------------------------
         float[] reflectorData = {
             // tip
             0.35f, 0.0f, 0.0f,
@@ -368,27 +466,34 @@ public class Renderer extends AbstractRenderer {
                 new OGLBuffers.Attrib("inPosition", 3, 0)
         };
 
+        // Load texture used by the procedural surface shader.
         try {
             texture = new OGLTexture2D("textures/mosaic.jpg");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
+        // Load predefined OBJ model.
         objectModel = new OGLModelOBJ("/obj/vase.obj");
         objectBuffers = objectModel.getBuffers();
 
+        // Create OpenGL buffers from generated vertex/index data.
         buffers = new OGLBuffers(vertexBufferData, 3, attributes, indexBufferData);
         stripBuffers = new OGLBuffers(vertexBufferData, 3, attributes, stripIndices);
         reflectorBuffer = new OGLBuffers( reflectorData, 3, reflectorAttributes, reflectorIndices);
 
+        // Render target for render-to-texture.
+        // Used by the ambient occlusion / deferred shading scene.
         renderTarget = new OGLRenderTarget(width, height);
         textureViewer = new OGLTexture2D.Viewer();
 
+        // Load shader programs.
         shaderProgram = ShaderUtils.loadProgram("/shader");
         objectShaderProgram = ShaderUtils.loadProgram("/obj");
         lightShaderProgram = ShaderUtils.loadProgram("/light");
         aoShaderProgram = ShaderUtils.loadProgram("/ao");
 
+        // Get uniform locations for all shader programs
         locProjection = glGetUniformLocation(shaderProgram, "projection");
         locView = glGetUniformLocation(shaderProgram, "view");
         locModel = glGetUniformLocation(shaderProgram, "model");
@@ -417,18 +522,29 @@ public class Renderer extends AbstractRenderer {
         locAoModel = glGetUniformLocation(aoShaderProgram, "model");
         locAoTime = glGetUniformLocation(aoShaderProgram, "time");
 
+        // Initialize 2D text renderer.
         textRenderer = new OGLTextRenderer(width, height);
         textRenderer.resize(width, height);
 
+        // Set initial reflector direction to point at the surface center.
         aimReflectorAt(new Vec3D(-1.5, 0.0, 0.0));
     }
 
     @Override
     public void display() {
+        // Clear color and depth buffers at the beginning of every frame.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Set viewport to the whole window.
         glViewport(0, 0, width, height);
+        // Apply selected polygon rendering mode.
         glPolygonMode(GL_FRONT_AND_BACK, polygonMode);
 
+        // ------------------------------------------------------------
+        // Calculate camera direction vectors from azimuth and zenith.
+        // lookForward is used for looking direction.
+        // moveForward is used for walking without vertical movement.
+        // right is used for side movement.
+        // ------------------------------------------------------------
         lookForward = new Vec3D(
                 Math.cos(zenith) * Math.sin(azimuth),
                 Math.cos(zenith) * Math.cos(azimuth),
@@ -447,6 +563,9 @@ public class Renderer extends AbstractRenderer {
         if (height == 0) return;
         double aspect = (double) width / height;
 
+        // Create projection matrix.
+        // Perspective projection makes distant objects smaller.
+        // Orthographic projection keeps object size independent of distance.
         if (perspectiveProjection) {
             projection = new Mat4PerspRH(
                     60,
@@ -463,19 +582,25 @@ public class Renderer extends AbstractRenderer {
             );
         }
 
+        // Create view matrix from camera position and viewing direction.
         view = new Mat4ViewRH(
                 cameraPos,
                 cameraPos.add(lookForward),
                 new Vec3D(0, 0, 1)
         );
 
+        // Default model matrix for procedural surface.
         model = new Mat4Transl(-1.5, 0, 0)
                 .mul(new Mat4RotX(objectRotation))
                 .mul(new Mat4Scale(0.7));
 
         float time = (float) glfwGetTime();
 
+        // ------------------------------------------------------------
+        // Render selected scene.
+        // ------------------------------------------------------------
         switch (sceneMode) {
+            // procedural surface scene
             case 0:
                 glUseProgram(shaderProgram);
                 glUniform1f(locTime, time);
@@ -489,6 +614,7 @@ public class Renderer extends AbstractRenderer {
                 texture.bind(shaderProgram, "textureSampler", 0);
 
                 if (surfaceMode == 1) {
+                    // two different objects in one scene
                     model = new Mat4Transl(-2, -1.5, 0);
                     glUniformMatrix4fv(locModel, false, model.floatArray());
                     glUniform1i(locSurfaceMode, 1);
@@ -515,7 +641,10 @@ public class Renderer extends AbstractRenderer {
                 }
                 break;
             case 1:
+                // object scene
                 glUseProgram(objectShaderProgram);
+
+                // Coordinate correction matrix for the imported model.
                 Mat4 rotate= new Mat4(new double[] {
                         1,  0,  0, 0,
                         0, -1,  0, 0,
@@ -524,33 +653,29 @@ public class Renderer extends AbstractRenderer {
                 });
 
                 Mat4 objectModelMatrix = new Mat4Scale(0.2);
-
                 Mat4 mat = rotate.mul(view).mul(objectModelMatrix).mul(rotate);
 
                 glUniformMatrix4fv(locObjMat, false, ToFloatArray.convert(mat));
 
                 objectBuffers.draw(objectModel.getTopology(), objectShaderProgram);
                 break;
+
+            // lighting scene
             case 2:
                 glUseProgram(lightShaderProgram);
 
                 glUniform1f(locLightTime, time);
                 glUniformMatrix4fv(locLightProjection, false, projection.floatArray());
                 glUniformMatrix4fv(locLightView, false, view.floatArray());
-
                 glUniform3f(locLightPointLightPosition, (float) pointLightSourcePosition.getX(), (float) pointLightSourcePosition.getY(), (float) pointLightSourcePosition.getZ());
-
                 glUniform3f(locLightEyePosition, (float) cameraPos.getX(), (float) cameraPos.getY(), (float) cameraPos.getZ());
-
                 glUniform1i(locLightMode, lightMode);
 
+                // Calculate reflector direction from reflectorAzimuth and reflectorZenith.
                 Vec3D reflectorDirection = getReflectorDirection();
 
                 glUniform3f(locLightReflectorDirection, (float) reflectorDirection.getX(), (float) reflectorDirection.getY(), (float) reflectorDirection.getZ());
-
-                // smaller value = wider cone, larger value = narrower cone
                 glUniform1f(locLightReflectorInnerCutOff, (float) Math.cos(Math.toRadians(reflectorInnerAngle)));
-
                 glUniform1f(locLightReflectorOuterCutOff, (float) Math.cos(Math.toRadians(reflectorOuterAngle)));
 
                 // wave
@@ -567,6 +692,8 @@ public class Renderer extends AbstractRenderer {
                 reflectorBuffer.draw(GL_TRIANGLES, lightShaderProgram);
 
                 break;
+
+            // ambient occlusion
             case 3:
                 renderTarget.bind();
 
@@ -591,15 +718,26 @@ public class Renderer extends AbstractRenderer {
                 break;
         }
 
+        // Make sure text is rendered to the main window, not into the render target.
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
         glUseProgram(0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+        // Draw current mode description.
         textRenderer.clear();
         textRenderer.addStr2D(20, 20, getColorModeText());
         textRenderer.draw();
     }
 
+    /**
+     * Calculates reflector direction from spherical angles.
+     *
+     * reflectorAzimuth controls horizontal direction.
+     * reflectorZenith controls vertical direction.
+     *
+     * @return normalized direction vector of the reflector
+     */
     private Vec3D getReflectorDirection() {
         return new Vec3D(
                 Math.cos(reflectorZenith) * Math.sin(reflectorAzimuth),
@@ -608,6 +746,13 @@ public class Renderer extends AbstractRenderer {
         ).normalized().get();
     }
 
+    /**
+     * Aims the reflector at a selected world-space target.
+     * The direction from the light source to the target is converted
+     * into azimuth and zenith angles.
+     *
+     * @param target world-space position where reflector should point
+     */
     private void aimReflectorAt(Vec3D target) {
         Vec3D d = target.sub(pointLightSourcePosition).normalized().get();
 
@@ -615,6 +760,15 @@ public class Renderer extends AbstractRenderer {
         reflectorZenith = Math.asin(d.getZ());
     }
 
+    /**
+     * Creates model matrix for the visible reflector object.
+     * The reflector mesh is modeled to point in local +X direction.
+     * This method rotates it so that it points in the actual reflector direction.
+     *
+     * @param position world-space position of the reflector
+     * @param direction direction where reflector should point
+     * @return model matrix for reflector object
+     */
     private Mat4 createReflectorModel(Vec3D position, Vec3D direction) {
         Vec3D d = direction.normalized().get();
 
@@ -631,6 +785,12 @@ public class Renderer extends AbstractRenderer {
                 .mul(new Mat4Scale(0.8));
     }
 
+    /**
+     * Mouse button callback.
+     * Stores whether the left mouse button is pressed.
+     * When the button is pressed, the current cursor position is saved
+     * so that camera rotation can be calculated from mouse movement.
+     */
     private GLFWMouseButtonCallback mouseCallback = new GLFWMouseButtonCallback() {
         @Override
         public void invoke(long window, int button, int action, int mods) {
@@ -647,6 +807,11 @@ public class Renderer extends AbstractRenderer {
         }
     };
 
+    /**
+     * Mouse movement callback.
+     * If the left mouse button is pressed, mouse movement changes
+     * camera azimuth and zenith.
+     */
     private GLFWCursorPosCallback cursorPosCallback = new GLFWCursorPosCallback() {
         @Override
         public void invoke(long window, double x, double y) {
@@ -668,6 +833,12 @@ public class Renderer extends AbstractRenderer {
         }
     };
 
+    /**
+     * Returns text description of the currently selected scene and mode.
+     * This text is rendered in the top-left corner of the window.
+     *
+     * @return description of current render mode
+     */
     private String getColorModeText() {
         switch (sceneMode) {
             case 0:
