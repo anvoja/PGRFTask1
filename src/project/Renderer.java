@@ -21,16 +21,19 @@ public class Renderer extends AbstractRenderer {
     private OGLBuffers stripBuffers;
     private OGLBuffers objectBuffers;
     private OGLModelOBJ objectModel;
+    private OGLBuffers reflectorBuffer;
 
     private OGLTexture2D texture;
 
     private int renderMode = GL_TRIANGLES;
     // 0 = procedural surface
     // 1 = object
+    // 2 = light
     private int sceneMode = 0;
 
     private int shaderProgram;
     private int objectShaderProgram;
+    private int lightShaderProgram;
 
     private Mat4 projection;
     private Mat4 view;
@@ -39,6 +42,8 @@ public class Renderer extends AbstractRenderer {
     private int surfaceMode = 1;
 
     private int colorMode = 0;
+    private int lightMode = 0;
+    private int polygonMode = GL_FILL;
 
     private int locProjection;
     private int locView;
@@ -49,6 +54,17 @@ public class Renderer extends AbstractRenderer {
     private int locEyePosition;
     private int locObjMat;
     private int locColorMode;
+    private int locLightMode;
+    private int locLightProjection;
+    private int locLightModel;
+    private int locLightTime;
+    private int locLightView;
+    private int locLightPointLightPosition;
+    private int locLightEyePosition;
+    private int locLightRenderMode;
+    private int locLightReflectorDirection;
+    private int locLightReflectorInnerCutOff;
+    private int locLightReflectorOuterCutOff;
 
     private double objectRotation = 0.0;
 
@@ -61,14 +77,22 @@ public class Renderer extends AbstractRenderer {
 
     private double azimuth = Math.PI / 2 + Math.PI;
     private double zenith = 0.2;
-    private Vec3D cameraPos = new Vec3D(0.1, 0, -0.5);
+    private Vec3D cameraPos = new Vec3D(0.2, 0.0, -0.5);
     private Vec3D lookForward;
     private Vec3D moveForward;
     private Vec3D right;
     private double speed = 0.1;
 
+    private Vec3D pointLightSourcePosition = new Vec3D(-1.5, -1.5, -2.0);
+    // reflector direction angles
+    private double reflectorAzimuth = Math.toRadians(90.0);
+    private double reflectorZenith = Math.toRadians(-35.0);
+
+    private double reflectorInnerAngle = 8.0;
+    private double reflectorOuterAngle = 18.0;
+
     // grid resolution
-    private int N = 30;
+    private int N = 150;
 
     private GLFWKeyCallback   keyCallback = new GLFWKeyCallback() {
         @Override
@@ -79,15 +103,15 @@ public class Renderer extends AbstractRenderer {
                 switch (key) {
                     case GLFW_KEY_N:
                         // show object in lines
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                        polygonMode = GL_LINE;
                         break;
                     case GLFW_KEY_B:
                         // show object as wireframe
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+                        polygonMode = GL_POINT;
                         break;
                     case GLFW_KEY_M:
                         // show object as solid
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                        polygonMode = GL_FILL;
                         break;
                     case GLFW_KEY_1:
                         surfaceMode = 0; // Cartesian plane
@@ -106,11 +130,10 @@ public class Renderer extends AbstractRenderer {
                         break;
                     case GLFW_KEY_P:
                         // object mode
-                        sceneMode = 1; // object
-                        break;
-                    case GLFW_KEY_O:
-                        // surface mode
-                        sceneMode = 0; // surface
+                        sceneMode = (sceneMode + 1) % 3;
+                        if (sceneMode == 2) {
+                            cameraPos = new Vec3D(0.5, -0, -0.7);
+                        }
                         break;
                     case GLFW_KEY_L:
                         // object as regular triangles
@@ -157,7 +180,65 @@ public class Renderer extends AbstractRenderer {
                         perspectiveProjection = false;
                         break;
                     case GLFW_KEY_C:
-                        colorMode = (colorMode + 1) % 8;
+                        colorMode = (colorMode + 1) % 6;
+                        break;
+                    case GLFW_KEY_H:
+                        lightMode = (lightMode + 1) % 9;
+                        break;
+                    case GLFW_KEY_KP_4:
+                        // X left
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(-speed, 0, 0));
+                        break;
+                    case GLFW_KEY_KP_6:
+                        // X right
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(speed, 0, 0));
+                        break;
+                    case GLFW_KEY_KP_8:
+                        // Y forward
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(0, speed, 0));
+                        break;
+                    case GLFW_KEY_KP_2:
+                        // Y backward
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(0, -speed, 0));
+                        break;
+                    case GLFW_KEY_KP_5:
+                        // Y backward
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(0, 0, speed));
+                        break;
+                    case GLFW_KEY_KP_0:
+                        // Y backward
+                        pointLightSourcePosition = pointLightSourcePosition.add(new Vec3D(0, 0, -speed));
+                        break;
+                    case GLFW_KEY_KP_7:
+                        // rotate reflector left
+                        reflectorAzimuth -= 0.05;
+                        break;
+                    case GLFW_KEY_KP_9:
+                        // rotate reflector right
+                        reflectorAzimuth += 0.05;
+                        break;
+                    case GLFW_KEY_KP_1:
+                        // rotate reflector down
+                        reflectorZenith -= 0.05;
+                        reflectorZenith = Math.min(Math.PI / 2 - 0.01, reflectorZenith);
+                        break;
+                    case GLFW_KEY_KP_3:
+                        // rotate reflector up
+                        reflectorZenith += 0.05;
+                        reflectorZenith = Math.max(-Math.PI / 2 + 0.01, reflectorZenith);
+                        break;
+                    case GLFW_KEY_Y:
+                        // narrower reflector cone
+                        reflectorInnerAngle = Math.max(2.0, reflectorInnerAngle - 1.0);
+                        reflectorOuterAngle = Math.max(reflectorInnerAngle + 2.0, reflectorOuterAngle - 1.0);
+                        break;
+                    case GLFW_KEY_R:
+                        // wider reflector cone
+                        reflectorInnerAngle = Math.min(40.0, reflectorInnerAngle + 1.0);
+                        reflectorOuterAngle = Math.min(60.0, reflectorOuterAngle + 1.0);
+                        break;
+                    case GLFW_KEY_T:
+                        aimReflectorAt(new Vec3D(-1.5, 0.0, 0.0));
                         break;
                 }
             }
@@ -225,6 +306,33 @@ public class Renderer extends AbstractRenderer {
           new OGLBuffers.Attrib("inPosition", 3, 0)
         };
 
+        float[] reflectorData = {
+            // tip
+            0.35f, 0.0f, 0.0f,
+
+            // back square
+            0.0f, -0.15f, -0.15f,
+            0.0f,  0.15f, -0.15f,
+            0.0f,  0.15f,  0.15f,
+            0.0f, -0.15f,  0.15f
+        };
+
+        int[] reflectorIndices = {
+            // sides
+            0, 1, 2,
+            0, 2, 3,
+            0, 3, 4,
+            0, 4, 1,
+
+            // back face
+            1, 4, 3,
+            1, 3, 2
+        };
+
+        OGLBuffers.Attrib[] reflectorAttributes = {
+                new OGLBuffers.Attrib("inPosition", 3, 0)
+        };
+
         try {
             texture = new OGLTexture2D("textures/mosaic.jpg");
         } catch (IOException e) {
@@ -236,9 +344,11 @@ public class Renderer extends AbstractRenderer {
 
         buffers = new OGLBuffers(vertexBufferData, 3, attributes, indexBufferData);
         stripBuffers = new OGLBuffers(vertexBufferData, 3, attributes, stripIndices);
+        reflectorBuffer = new OGLBuffers( reflectorData, 3, reflectorAttributes, reflectorIndices);
 
         shaderProgram = ShaderUtils.loadProgram("/shader");
         objectShaderProgram = ShaderUtils.loadProgram("/obj");
+        lightShaderProgram = ShaderUtils.loadProgram("/light");
 
         locProjection = glGetUniformLocation(shaderProgram, "projection");
         locView = glGetUniformLocation(shaderProgram, "view");
@@ -249,15 +359,29 @@ public class Renderer extends AbstractRenderer {
         locEyePosition = glGetUniformLocation(shaderProgram, "eyePosition");
         locColorMode = glGetUniformLocation(shaderProgram, "colorMode");
         locObjMat = glGetUniformLocation(objectShaderProgram, "mat");
+        locLightMode = glGetUniformLocation(lightShaderProgram, "lightMode");
+        locLightProjection = glGetUniformLocation(lightShaderProgram, "projection");
+        locLightModel = glGetUniformLocation(lightShaderProgram, "model");
+        locLightTime = glGetUniformLocation(lightShaderProgram, "time");
+        locLightView = glGetUniformLocation(lightShaderProgram, "view");
+        locLightPointLightPosition = glGetUniformLocation(lightShaderProgram, "pointLightPosition");
+        locLightEyePosition = glGetUniformLocation(lightShaderProgram, "eyePosition");
+        locLightRenderMode = glGetUniformLocation(lightShaderProgram, "renderMode");
+        locLightReflectorDirection = glGetUniformLocation(lightShaderProgram, "reflectorDirection");
+        locLightReflectorInnerCutOff = glGetUniformLocation(lightShaderProgram, "reflectorInnerCutOff");
+        locLightReflectorOuterCutOff = glGetUniformLocation(lightShaderProgram, "reflectorOuterCutOff");
 
         textRenderer = new OGLTextRenderer(width, height);
         textRenderer.resize(width, height);
+
+        aimReflectorAt(new Vec3D(-1.5, 0.0, 0.0));
     }
 
     @Override
     public void display() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, width, height);
+        glPolygonMode(GL_FRONT_AND_BACK, polygonMode);
 
         lookForward = new Vec3D(
                 Math.cos(zenith) * Math.sin(azimuth),
@@ -305,65 +429,133 @@ public class Renderer extends AbstractRenderer {
 
         float time = (float) glfwGetTime();
 
-        if (sceneMode == 0) {
-            glUseProgram(shaderProgram);
-            glUniform1f(locTime, time);
-            glUniform1i(locSurfaceMode, surfaceMode);
-            glUniformMatrix4fv(locView, false, view.floatArray());
-            glUniformMatrix4fv(locProjection, false, projection.floatArray());
-            glUniform3f(locEyePosition, (float) cameraPos.getX(), (float) cameraPos.getY(), (float) cameraPos.getZ());
-            glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
-            glUniformMatrix4fv(locModel, false, model.floatArray());
-            glUniform1i(locColorMode, colorMode);
-            texture.bind(shaderProgram, "textureSampler", 0);
-
-            if (surfaceMode == 1) {
-                model = new Mat4Transl(-2, -1.5, 0);
+        switch (sceneMode) {
+            case 0:
+                glUseProgram(shaderProgram);
+                glUniform1f(locTime, time);
+                glUniform1i(locSurfaceMode, surfaceMode);
+                glUniformMatrix4fv(locView, false, view.floatArray());
+                glUniformMatrix4fv(locProjection, false, projection.floatArray());
+                glUniform3f(locEyePosition, (float) cameraPos.getX(), (float) cameraPos.getY(), (float) cameraPos.getZ());
+                glUniform3f(locLightPosition, 2.0f, -3.0f, 4.0f);
                 glUniformMatrix4fv(locModel, false, model.floatArray());
-                glUniform1i(locSurfaceMode, 1);
-                buffers.draw(GL_TRIANGLES, shaderProgram);
-                if (renderMode == GL_TRIANGLES) {
-                    buffers.draw(GL_TRIANGLES, shaderProgram);
+                glUniform1i(locColorMode, colorMode);
+                texture.bind(shaderProgram, "textureSampler", 0);
+
+                if (surfaceMode == 1) {
+                    model = new Mat4Transl(-2, -1.5, 0);
+                    glUniformMatrix4fv(locModel, false, model.floatArray());
+                    glUniform1i(locSurfaceMode, 1);
+                    if (renderMode == GL_TRIANGLES) {
+                        buffers.draw(GL_TRIANGLES, shaderProgram);
+                    } else {
+                        stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
+                    }
+
+                    model = new Mat4Transl(-2, 2, 0);
+                    glUniformMatrix4fv(locModel, false, model.floatArray());
+                    glUniform1i(locSurfaceMode, 5);
+                    if (renderMode == GL_TRIANGLES) {
+                        buffers.draw(GL_TRIANGLES, shaderProgram);
+                    } else {
+                        stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
+                    }
                 } else {
-                    stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
+                    if (renderMode == GL_TRIANGLES) {
+                        buffers.draw(GL_TRIANGLES, shaderProgram);
+                    } else {
+                        stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
+                    }
                 }
+                break;
+            case 1:
+                glUseProgram(objectShaderProgram);
+                model = new Mat4Scale(1.0);
+                Mat4 rotate= new Mat4(new double[] {
+                        1,  0,  0, 0,
+                        0, -1,  0, 0,
+                        0,  0,  1, 0,
+                        0,  0,  0, 1,
+                });
 
-                model = new Mat4Transl(-2, 2, 0);
-                glUniformMatrix4fv(locModel, false, model.floatArray());
-                glUniform1i(locSurfaceMode, 5);
-                buffers.draw(GL_TRIANGLES, shaderProgram);
-                if (renderMode == GL_TRIANGLES) {
-                    buffers.draw(GL_TRIANGLES, shaderProgram);
-                } else {
-                    stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
-                }
-            } else {
-                if (renderMode == GL_TRIANGLES) {
-                    buffers.draw(GL_TRIANGLES, shaderProgram);
-                } else {
-                    stripBuffers.draw(GL_TRIANGLE_STRIP, shaderProgram);
-                }
-            }
-        } else {
-            glUseProgram(objectShaderProgram);
-            model = new Mat4Scale(1.0);
-            Mat4 rotate= new Mat4(new double[] {
-                    1,  0,  0, 0,
-                    0, -1,  0, 0,
-                    0,  0,  1, 0,
-                    0,  0,  0, 1,
-            });
+                Mat4 mat = rotate.mul(view).mul(projection);
 
-            Mat4 mat = rotate.mul(view).mul(projection);
+                glUniformMatrix4fv(locObjMat, false, ToFloatArray.convert(mat));
 
-            glUniformMatrix4fv(locObjMat, false, ToFloatArray.convert(mat));
+                objectBuffers.draw(objectModel.getTopology(), objectShaderProgram);
+                break;
+            case 2:
+                glUseProgram(lightShaderProgram);
 
-            objectBuffers.draw(objectModel.getTopology(), objectShaderProgram);
+                glUniform1f(locLightTime, time);
+                glUniformMatrix4fv(locLightProjection, false, projection.floatArray());
+                glUniformMatrix4fv(locLightView, false, view.floatArray());
+
+                glUniform3f(locLightPointLightPosition, (float) pointLightSourcePosition.getX(), (float) pointLightSourcePosition.getY(), (float) pointLightSourcePosition.getZ());
+
+                glUniform3f(locLightEyePosition, (float) cameraPos.getX(), (float) cameraPos.getY(), (float) cameraPos.getZ());
+
+                glUniform1i(locLightMode, lightMode);
+
+                Vec3D reflectorDirection = getReflectorDirection();
+
+                glUniform3f(locLightReflectorDirection, (float) reflectorDirection.getX(), (float) reflectorDirection.getY(), (float) reflectorDirection.getZ());
+
+                // smaller value = wider cone, larger value = narrower cone
+                glUniform1f(locLightReflectorInnerCutOff, (float) Math.cos(Math.toRadians(reflectorInnerAngle)));
+
+                glUniform1f(locLightReflectorOuterCutOff, (float) Math.cos(Math.toRadians(reflectorOuterAngle)));
+
+                // wave
+                glUniform1i(locLightRenderMode, 0);
+                glUniformMatrix4fv(locLightModel, false, model.floatArray());
+                buffers.draw(GL_TRIANGLES, lightShaderProgram);
+
+                // reflector
+                Mat4 reflectorModel = createReflectorModel(pointLightSourcePosition, reflectorDirection);
+
+                glUniform1i(locLightRenderMode, 1);
+                glUniformMatrix4fv(locLightModel, false, reflectorModel.floatArray());
+
+                reflectorBuffer.draw(GL_TRIANGLES, lightShaderProgram);
+
+                break;
         }
 
         textRenderer.clear();
         textRenderer.addStr2D(20, 20, getColorModeText());
         textRenderer.draw();
+    }
+
+    private Vec3D getReflectorDirection() {
+        return new Vec3D(
+                Math.cos(reflectorZenith) * Math.sin(reflectorAzimuth),
+                Math.cos(reflectorZenith) * Math.cos(reflectorAzimuth),
+                Math.sin(reflectorZenith)
+        ).normalized().get();
+    }
+
+    private void aimReflectorAt(Vec3D target) {
+        Vec3D d = target.sub(pointLightSourcePosition).normalized().get();
+
+        reflectorAzimuth = Math.atan2(d.getX(), d.getY());
+        reflectorZenith = Math.asin(d.getZ());
+    }
+
+    private Mat4 createReflectorModel(Vec3D position, Vec3D direction) {
+        Vec3D d = direction.normalized().get();
+
+        double yaw = Math.atan2(d.getY(), d.getX());
+        double pitch = -Math.asin(d.getZ());
+
+        return new Mat4Transl(
+                position.getX(),
+                position.getY(),
+                position.getZ()
+        )
+                .mul(new Mat4RotZ(yaw))
+                .mul(new Mat4RotY(pitch))
+                .mul(new Mat4Scale(0.8));
     }
 
     private GLFWMouseButtonCallback mouseCallback = new GLFWMouseButtonCallback() {
@@ -402,15 +594,29 @@ public class Renderer extends AbstractRenderer {
     };
 
     private String getColorModeText() {
-        switch (colorMode) {
-            case 0: return "Color mode: XYZ in observer coordinates";
-            case 1: return "Color mode: Depth buffer";
-            case 2: return "Color mode: Normal XYZ";
-            case 3: return "Color mode: Texture RGBA";
-            case 4: return "Color mode: Texture UV";
-            case 5: return "Color mode: Lighting without texture";
-            case 6: return "Color mode: Complete lighting with texture";
-            case 7: return "Color mode: Distance from light";
+        switch (sceneMode) {
+            case 0:
+                switch (colorMode) {
+                    case 0: return "Color mode: XYZ in observer coordinates";
+                    case 1: return "Color mode: Depth buffer";
+                    case 2: return "Color mode: Normal XYZ";
+                    case 3: return "Color mode: Texture";
+                    case 4: return "Color mode: Lighting without texture";
+                    case 5: return "Color mode: Complete lighting with texture";
+                    case 6: return "Color mode: Distance from light";
+                    default: return "Color mode: Unknown";
+                }
+            case 1:
+                return "Predefined object";
+            case 2:
+                switch (lightMode) {
+                    case 0: return "Point light source";
+                    case 1: return "Point light + diffuse";
+                    case 2: return "Point light + diffuse + ambient";
+                    case 3: return "Point light + diffuse + ambient + mirror";
+                    case 4: return "Point light + diffuse + ambient + mirror + attenuation";
+                    case 5: return "Reflector / spotlight";
+                }
             default: return "Color mode: Unknown";
         }
     }
