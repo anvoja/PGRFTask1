@@ -15,6 +15,7 @@ import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
+import static org.lwjgl.opengl.GL30.*;
 
 public class Renderer extends AbstractRenderer {
     private OGLBuffers buffers;
@@ -22,6 +23,9 @@ public class Renderer extends AbstractRenderer {
     private OGLBuffers objectBuffers;
     private OGLModelOBJ objectModel;
     private OGLBuffers reflectorBuffer;
+    private OGLRenderTarget renderTarget;
+    private OGLTextRenderer textRenderer;
+    private OGLTexture2D.Viewer textureViewer;
 
     private OGLTexture2D texture;
 
@@ -29,11 +33,14 @@ public class Renderer extends AbstractRenderer {
     // 0 = procedural surface
     // 1 = object
     // 2 = light
+    // 3 = ambient occlusion
     private int sceneMode = 0;
 
     private int shaderProgram;
     private int objectShaderProgram;
     private int lightShaderProgram;
+
+    private int aoShaderProgram;
 
     private Mat4 projection;
     private Mat4 view;
@@ -44,6 +51,7 @@ public class Renderer extends AbstractRenderer {
     private int colorMode = 0;
     private int lightMode = 0;
     private int polygonMode = GL_FILL;
+    private int aoMode = 0;
 
     private int locProjection;
     private int locView;
@@ -65,6 +73,11 @@ public class Renderer extends AbstractRenderer {
     private int locLightReflectorDirection;
     private int locLightReflectorInnerCutOff;
     private int locLightReflectorOuterCutOff;
+
+    private int locAoProjection;
+    private int locAoView;
+    private int locAoModel;
+    private int locAoTime;
 
     private double objectRotation = 0.0;
 
@@ -130,9 +143,28 @@ public class Renderer extends AbstractRenderer {
                         break;
                     case GLFW_KEY_P:
                         // object mode
-                        sceneMode = (sceneMode + 1) % 3;
-                        if (sceneMode == 2) {
-                            cameraPos = new Vec3D(0.5, -0, -0.7);
+                        sceneMode = (sceneMode + 1) % 4;
+                        switch (sceneMode) {
+                            case 0:
+                                cameraPos = new Vec3D(0.2, 0.0, -0.5);
+                                azimuth = Math.PI / 2 + Math.PI;
+                                zenith = 0.2;
+                                break;
+                            case 1:
+                                cameraPos = new Vec3D(0.2, -0.8, -0.5);
+                                azimuth = 6;
+                                zenith = 0.5;
+                                break;
+                            case 2:
+                                cameraPos = new Vec3D(0.5, -0, -0.7);
+                                azimuth = Math.PI / 2 + Math.PI;
+                                zenith = 0.5;
+                                break;
+                            case 3:
+                                cameraPos = new Vec3D(0.0, -0.2, -0.8);
+                                azimuth = 2;
+                                zenith = 1.5;
+                                break;
                         }
                         break;
                     case GLFW_KEY_L:
@@ -158,11 +190,11 @@ public class Renderer extends AbstractRenderer {
                         System.out.println(cameraPos);
                         break;
                     case GLFW_KEY_A:
-                        cameraPos = cameraPos.sub(right.mul(speed));
+                        cameraPos = cameraPos.add(right.mul(speed));
                         System.out.println(cameraPos);
                         break;
                     case GLFW_KEY_D:
-                        cameraPos = cameraPos.add(right.mul(speed));
+                        cameraPos = cameraPos.sub(right.mul(speed));
                         System.out.println(cameraPos);
                         break;
                     case GLFW_KEY_SPACE:
@@ -183,7 +215,7 @@ public class Renderer extends AbstractRenderer {
                         colorMode = (colorMode + 1) % 6;
                         break;
                     case GLFW_KEY_H:
-                        lightMode = (lightMode + 1) % 9;
+                        lightMode = (lightMode + 1) % 6;
                         break;
                     case GLFW_KEY_KP_4:
                         // X left
@@ -239,6 +271,9 @@ public class Renderer extends AbstractRenderer {
                         break;
                     case GLFW_KEY_T:
                         aimReflectorAt(new Vec3D(-1.5, 0.0, 0.0));
+                        break;
+                    case GLFW_KEY_O:
+                        aoMode = (aoMode + 1) % 3;
                         break;
                 }
             }
@@ -346,9 +381,13 @@ public class Renderer extends AbstractRenderer {
         stripBuffers = new OGLBuffers(vertexBufferData, 3, attributes, stripIndices);
         reflectorBuffer = new OGLBuffers( reflectorData, 3, reflectorAttributes, reflectorIndices);
 
+        renderTarget = new OGLRenderTarget(width, height);
+        textureViewer = new OGLTexture2D.Viewer();
+
         shaderProgram = ShaderUtils.loadProgram("/shader");
         objectShaderProgram = ShaderUtils.loadProgram("/obj");
         lightShaderProgram = ShaderUtils.loadProgram("/light");
+        aoShaderProgram = ShaderUtils.loadProgram("/ao");
 
         locProjection = glGetUniformLocation(shaderProgram, "projection");
         locView = glGetUniformLocation(shaderProgram, "view");
@@ -358,7 +397,9 @@ public class Renderer extends AbstractRenderer {
         locLightPosition = glGetUniformLocation(shaderProgram, "lightPosition");
         locEyePosition = glGetUniformLocation(shaderProgram, "eyePosition");
         locColorMode = glGetUniformLocation(shaderProgram, "colorMode");
+
         locObjMat = glGetUniformLocation(objectShaderProgram, "mat");
+
         locLightMode = glGetUniformLocation(lightShaderProgram, "lightMode");
         locLightProjection = glGetUniformLocation(lightShaderProgram, "projection");
         locLightModel = glGetUniformLocation(lightShaderProgram, "model");
@@ -370,6 +411,11 @@ public class Renderer extends AbstractRenderer {
         locLightReflectorDirection = glGetUniformLocation(lightShaderProgram, "reflectorDirection");
         locLightReflectorInnerCutOff = glGetUniformLocation(lightShaderProgram, "reflectorInnerCutOff");
         locLightReflectorOuterCutOff = glGetUniformLocation(lightShaderProgram, "reflectorOuterCutOff");
+
+        locAoProjection = glGetUniformLocation(aoShaderProgram, "projection");
+        locAoView = glGetUniformLocation(aoShaderProgram, "view");
+        locAoModel = glGetUniformLocation(aoShaderProgram, "model");
+        locAoTime = glGetUniformLocation(aoShaderProgram, "time");
 
         textRenderer = new OGLTextRenderer(width, height);
         textRenderer.resize(width, height);
@@ -470,7 +516,6 @@ public class Renderer extends AbstractRenderer {
                 break;
             case 1:
                 glUseProgram(objectShaderProgram);
-                model = new Mat4Scale(1.0);
                 Mat4 rotate= new Mat4(new double[] {
                         1,  0,  0, 0,
                         0, -1,  0, 0,
@@ -478,7 +523,9 @@ public class Renderer extends AbstractRenderer {
                         0,  0,  0, 1,
                 });
 
-                Mat4 mat = rotate.mul(view).mul(projection);
+                Mat4 objectModelMatrix = new Mat4Scale(0.2);
+
+                Mat4 mat = rotate.mul(view).mul(objectModelMatrix).mul(rotate);
 
                 glUniformMatrix4fv(locObjMat, false, ToFloatArray.convert(mat));
 
@@ -520,8 +567,34 @@ public class Renderer extends AbstractRenderer {
                 reflectorBuffer.draw(GL_TRIANGLES, lightShaderProgram);
 
                 break;
+            case 3:
+                renderTarget.bind();
+
+                glViewport(0, 0, width, height);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+                glUseProgram(aoShaderProgram);
+
+                glUniform1f(locAoTime, time);
+                glUniformMatrix4fv(locAoProjection, false, projection.floatArray());
+                glUniformMatrix4fv(locAoView, false, view.floatArray());
+                glUniformMatrix4fv(locAoModel, false, model.floatArray());
+
+                glViewport(0, 0, width, height);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+                buffers.draw(GL_TRIANGLES, aoShaderProgram);
+
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+                textureViewer.view(renderTarget.getColorTexture(), -1, -1, 2, 2);
+                break;
         }
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glUseProgram(0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         textRenderer.clear();
         textRenderer.addStr2D(20, 20, getColorModeText());
         textRenderer.draw();
@@ -590,6 +663,8 @@ public class Renderer extends AbstractRenderer {
 
             // prevent camera flipping upside down
             zenith = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, zenith));
+
+            System.out.println("azimuth: " + azimuth + " zenith: " + zenith);
         }
     };
 
@@ -616,6 +691,10 @@ public class Renderer extends AbstractRenderer {
                     case 3: return "Point light + diffuse + ambient + mirror";
                     case 4: return "Point light + diffuse + ambient + mirror + attenuation";
                     case 5: return "Reflector / spotlight";
+                }
+            case 3:
+                switch (aoMode) {
+                    case 0: return "Ambient occlusion: deferred shading first pass";
                 }
             default: return "Color mode: Unknown";
         }
